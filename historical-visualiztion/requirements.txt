@@ -1,0 +1,9 @@
+transformers
+torch
+flask
+pillow
+opencv-python
+wikipedia 
+requests 
+opencv-python 
+numpy
