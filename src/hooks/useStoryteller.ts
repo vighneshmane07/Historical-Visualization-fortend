@@ -14,7 +14,7 @@ const greetings: Record<Language, string> = {
 
 async function askAI(question: string) {
   try {
-    const res = await fetch("http://localhost:5000/ask", {
+    const res = await fetch("https://historical-visualization-backend-production.up.railway.app", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
