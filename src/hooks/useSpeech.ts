@@ -7,7 +7,7 @@ const langMap: Record<Language, string> = {
   mr: "mr-IN",
 };
 
-const API_BASE = "http://127.0.0.1:5000";
+const API_BASE = "https://historical-visualization-backend-production.up.railway.appp";
 
 function splitText(text: string, maxLength = 250): string[] {
   const cleanText = text.replace(/\s+/g, " ").trim();
