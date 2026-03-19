@@ -13,7 +13,7 @@ const queryClient = new QueryClient();
    =============================== */
 export async function askAI(question: string) {
 
-  const response = await fetch("http://localhost:5000/ask", {
+  const response = await fetch("https://historical-visualization-backend-production.up.railway.app", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
