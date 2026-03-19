@@ -7,12 +7,47 @@ const langMap: Record<Language, string> = {
   mr: "mr-IN",
 };
 
+const API_BASE = "http://127.0.0.1:5000";
+
+function splitText(text: string, maxLength = 250): string[] {
+  const cleanText = text.replace(/\s+/g, " ").trim();
+  if (!cleanText) return [];
+
+  const sentences = cleanText.split(/(?<=[.!?])\s+/);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    if ((current + " " + sentence).trim().length <= maxLength) {
+      current = (current + " " + sentence).trim();
+    } else {
+      if (current) chunks.push(current);
+
+      if (sentence.length <= maxLength) {
+        current = sentence;
+      } else {
+        let start = 0;
+        while (start < sentence.length) {
+          chunks.push(sentence.slice(start, start + maxLength));
+          start += maxLength;
+        }
+        current = "";
+      }
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 export function useSpeech(language: Language) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const recognitionRef = useRef<any>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stopRequestedRef = useRef(false);
 
   /* -----------------------------
      LOAD AVAILABLE VOICES
@@ -23,38 +58,85 @@ export function useSpeech(language: Language) {
     };
 
     loadVoices();
-
     speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  /* -----------------------------
+     PLAY ONE AUDIO BLOB
+  ----------------------------- */
+  const playBlob = useCallback((blob: Blob) => {
+    return new Promise<void>((resolve, reject) => {
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        resolve();
+      };
+
+      audio.onerror = (e) => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        reject(e);
+      };
+
+      audio.play().catch((err) => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        reject(err);
+      });
+    });
   }, []);
 
   /* -----------------------------
      SPEAK FUNCTION
   ----------------------------- */
   const speak = useCallback(async (text: string) => {
+    if (!text?.trim()) return;
 
-  setIsSpeaking(true);
+    stopRequestedRef.current = false;
+    setIsSpeaking(true);
 
-  const response = await fetch("http://127.0.0.1:5001/speak", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ text })
-  });
+    try {
+      const chunks = splitText(text, 250);
 
-  const blob = await response.blob();
+      for (const chunk of chunks) {
+        if (stopRequestedRef.current) break;
 
-  const audio = new Audio(URL.createObjectURL(blob));
+        const response = await fetch(`${API_BASE}/speak`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: chunk }),
+        });
 
-  audio.onended = () => setIsSpeaking(false);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Speak API failed: ${errText}`);
+        }
 
-  audio.play();
+        const blob = await response.blob();
 
-}, []);
+        if (stopRequestedRef.current) break;
+        await playBlob(blob);
+      }
+    } catch (error) {
+      console.error("Speak error:", error);
+    } finally {
+      setIsSpeaking(false);
+    }
+  }, [playBlob]);
+
   /* -----------------------------
      STOP SPEAKING
   ----------------------------- */
   const stopSpeaking = useCallback(() => {
+    stopRequestedRef.current = true;
+    currentAudioRef.current?.pause();
+    currentAudioRef.current = null;
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
   }, []);
@@ -106,6 +188,7 @@ export function useSpeech(language: Language) {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
+      currentAudioRef.current?.pause();
       window.speechSynthesis?.cancel();
     };
   }, []);
